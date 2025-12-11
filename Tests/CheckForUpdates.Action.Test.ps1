@@ -280,11 +280,25 @@ Describe "CheckForUpdates Action: ApplyWorkflowDefaultInputs Tests" {
     It 'ApplyWorkflowDefaultInputs applies default values to workflow inputs' {
         . (Join-Path $scriptRoot "yamlclass.ps1")
 
-        # Create a test workflow YAML with workflow_dispatch inputs
+        # Create a test workflow YAML with both workflow_dispatch and workflow_call inputs
         $yamlContent = @(
             "name: 'Test Workflow'",
             "on:",
             "  workflow_dispatch:",
+            "    inputs:",
+            "      directCommit:",
+            "        description: Direct Commit?",
+            "        type: boolean",
+            "        default: false",
+            "      useGhTokenWorkflow:",
+            "        description: Use GhTokenWorkflow?",
+            "        type: boolean",
+            "        default: false",
+            "      updateVersionNumber:",
+            "        description: Version number",
+            "        required: false",
+            "        default: ''",
+            "  workflow_call:",
             "    inputs:",
             "      directCommit:",
             "        description: Direct Commit?",
@@ -319,10 +333,15 @@ Describe "CheckForUpdates Action: ApplyWorkflowDefaultInputs Tests" {
         # Apply the defaults
         ApplyWorkflowDefaultInputs -yaml $yaml -repoSettings $repoSettings -workflowName "Test Workflow"
 
-        # Verify the defaults were applied
+        # Verify the defaults were applied to workflow_dispatch
         $yaml.Get('on:/workflow_dispatch:/inputs:/directCommit:/default:').content -join '' | Should -Be 'default: true'
         $yaml.Get('on:/workflow_dispatch:/inputs:/useGhTokenWorkflow:/default:').content -join '' | Should -Be 'default: true'
         $yaml.Get('on:/workflow_dispatch:/inputs:/updateVersionNumber:/default:').content -join '' | Should -Be "default: '+0.1'"
+
+        # Verify the defaults were also applied to workflow_call
+        $yaml.Get('on:/workflow_call:/inputs:/directCommit:/default:').content -join '' | Should -Be 'default: true'
+        $yaml.Get('on:/workflow_call:/inputs:/useGhTokenWorkflow:/default:').content -join '' | Should -Be 'default: true'
+        $yaml.Get('on:/workflow_call:/inputs:/updateVersionNumber:/default:').content -join '' | Should -Be "default: '+0.1'"
     }
 
     It 'ApplyWorkflowDefaultInputs handles empty workflowDefaultInputs array' {
@@ -418,11 +437,28 @@ Describe "CheckForUpdates Action: ApplyWorkflowDefaultInputs Tests" {
     It 'ApplyWorkflowDefaultInputs applies multiple defaults to same workflow' {
         . (Join-Path $scriptRoot "yamlclass.ps1")
 
-        # Create a test workflow YAML with multiple inputs
+        # Create a test workflow YAML with multiple inputs in both workflow_dispatch and workflow_call
         $yamlContent = @(
             "name: 'Test Workflow'",
             "on:",
             "  workflow_dispatch:",
+            "    inputs:",
+            "      input1:",
+            "        type: boolean",
+            "        default: false",
+            "      input2:",
+            "        type: number",
+            "        default: 0",
+            "      input3:",
+            "        type: string",
+            "        default: ''",
+            "      input4:",
+            "        type: choice",
+            "        options:",
+            "          - optionA",
+            "          - optionB",
+            "        default: optionA",
+            "  workflow_call:",
             "    inputs:",
             "      input1:",
             "        type: boolean",
@@ -459,21 +495,32 @@ Describe "CheckForUpdates Action: ApplyWorkflowDefaultInputs Tests" {
         # Apply the defaults
         ApplyWorkflowDefaultInputs -yaml $yaml -repoSettings $repoSettings -workflowName "Test Workflow"
 
-        # Verify all defaults were applied
+        # Verify all defaults were applied to workflow_dispatch
         $yaml.Get('on:/workflow_dispatch:/inputs:/input1:/default:').content -join '' | Should -Be 'default: true'
         $yaml.Get('on:/workflow_dispatch:/inputs:/input2:/default:').content -join '' | Should -Be 'default: 5'
         $yaml.Get('on:/workflow_dispatch:/inputs:/input3:/default:').content -join '' | Should -Be "default: 'test-value'"
         $yaml.Get('on:/workflow_dispatch:/inputs:/input4:/default:').content -join '' | Should -Be "default: 'optionB'"
+
+        # Verify all defaults were also applied to workflow_call
+        $yaml.Get('on:/workflow_call:/inputs:/input1:/default:').content -join '' | Should -Be 'default: true'
+        $yaml.Get('on:/workflow_call:/inputs:/input2:/default:').content -join '' | Should -Be 'default: 5'
+        $yaml.Get('on:/workflow_call:/inputs:/input3:/default:').content -join '' | Should -Be "default: 'test-value'"
+        $yaml.Get('on:/workflow_call:/inputs:/input4:/default:').content -join '' | Should -Be "default: 'optionB'"
     }
 
     It 'ApplyWorkflowDefaultInputs is case-insensitive for input names' {
         . (Join-Path $scriptRoot "yamlclass.ps1")
 
-        # Create a test workflow YAML with specific casing
+        # Create a test workflow YAML with specific casing in both workflow_dispatch and workflow_call
         $yamlContent = @(
             "name: 'Test Workflow'",
             "on:",
             "  workflow_dispatch:",
+            "    inputs:",
+            "      MyInput:",
+            "        type: boolean",
+            "        default: false",
+            "  workflow_call:",
             "    inputs:",
             "      MyInput:",
             "        type: boolean",
@@ -495,18 +542,26 @@ Describe "CheckForUpdates Action: ApplyWorkflowDefaultInputs Tests" {
         # Apply the defaults
         ApplyWorkflowDefaultInputs -yaml $yaml -repoSettings $repoSettings -workflowName "Test Workflow"
 
-        # Verify default WAS applied despite case difference (case-insensitive matching)
+        # Verify default WAS applied despite case difference (case-insensitive matching) to workflow_dispatch
         $yaml.Get('on:/workflow_dispatch:/inputs:/MyInput:/default:').content -join '' | Should -Be 'default: true'
+
+        # Verify default WAS also applied to workflow_call
+        $yaml.Get('on:/workflow_call:/inputs:/MyInput:/default:').content -join '' | Should -Be 'default: true'
     }
 
     It 'ApplyWorkflowDefaultInputs ignores defaults for non-existent inputs' {
         . (Join-Path $scriptRoot "yamlclass.ps1")
 
-        # Create a test workflow YAML
+        # Create a test workflow YAML with both workflow_dispatch and workflow_call
         $yamlContent = @(
             "name: 'Test Workflow'",
             "on:",
             "  workflow_dispatch:",
+            "    inputs:",
+            "      existingInput:",
+            "        type: boolean",
+            "        default: false",
+            "  workflow_call:",
             "    inputs:",
             "      existingInput:",
             "        type: boolean",
@@ -535,11 +590,16 @@ Describe "CheckForUpdates Action: ApplyWorkflowDefaultInputs Tests" {
     It 'ApplyWorkflowDefaultInputs applies only existing inputs when mixed with non-existent inputs' {
         . (Join-Path $scriptRoot "yamlclass.ps1")
 
-        # Create a test workflow YAML
+        # Create a test workflow YAML with both workflow_dispatch and workflow_call
         $yamlContent = @(
             "name: 'Test Workflow'",
             "on:",
             "  workflow_dispatch:",
+            "    inputs:",
+            "      existingInput:",
+            "        type: boolean",
+            "        default: false",
+            "  workflow_call:",
             "    inputs:",
             "      existingInput:",
             "        type: boolean",
@@ -563,18 +623,29 @@ Describe "CheckForUpdates Action: ApplyWorkflowDefaultInputs Tests" {
         # Apply the defaults - should not throw
         { ApplyWorkflowDefaultInputs -yaml $yaml -repoSettings $repoSettings -workflowName "Test Workflow" } | Should -Not -Throw
 
-        # Verify only the existing input was modified
+        # Verify only the existing input was modified in workflow_dispatch
         $yaml.Get('on:/workflow_dispatch:/inputs:/existingInput:/default:').content -join '' | Should -Be 'default: true'
+
+        # Verify only the existing input was also modified in workflow_call
+        $yaml.Get('on:/workflow_call:/inputs:/existingInput:/default:').content -join '' | Should -Be 'default: true'
     }
 
     It 'ApplyWorkflowDefaultInputs applies last value when multiple entries have same input name' {
         . (Join-Path $scriptRoot "yamlclass.ps1")
 
-        # Create a test workflow YAML
+        # Create a test workflow YAML with both workflow_dispatch and workflow_call
         $yamlContent = @(
             "name: 'Test Workflow'",
             "on:",
             "  workflow_dispatch:",
+            "    inputs:",
+            "      input1:",
+            "        type: string",
+            "        default: ''",
+            "      input2:",
+            "        type: boolean",
+            "        default: false",
+            "  workflow_call:",
             "    inputs:",
             "      input1:",
             "        type: string",
@@ -603,9 +674,141 @@ Describe "CheckForUpdates Action: ApplyWorkflowDefaultInputs Tests" {
         # Apply the defaults
         ApplyWorkflowDefaultInputs -yaml $yaml -repoSettings $repoSettings -workflowName "Test Workflow"
 
-        # Verify "last wins" - the final value for input1 should be applied
+        # Verify "last wins" - the final value for input1 should be applied to workflow_dispatch
         $yaml.Get('on:/workflow_dispatch:/inputs:/input1:/default:').content -join '' | Should -Be "default: 'final-value'"
         $yaml.Get('on:/workflow_dispatch:/inputs:/input2:/default:').content -join '' | Should -Be 'default: false'
+
+        # Verify "last wins" also applies to workflow_call
+        $yaml.Get('on:/workflow_call:/inputs:/input1:/default:').content -join '' | Should -Be "default: 'final-value'"
+        $yaml.Get('on:/workflow_call:/inputs:/input2:/default:').content -join '' | Should -Be 'default: false'
+    }
+
+    It 'ApplyWorkflowDefaultInputs updates workflow_call inputs only when matching workflow_dispatch input exists' {
+        . (Join-Path $scriptRoot "yamlclass.ps1")
+
+        # Create a workflow where workflow_call has an input that also exists in workflow_dispatch
+        # and another input that does NOT exist in workflow_dispatch
+        $yamlContent = @(
+            "name: 'Test Workflow'",
+            "on:",
+            "  workflow_dispatch:",
+            "    inputs:",
+            "      sharedInput:",
+            "        type: string",
+            "        default: 'dispatch-default'",
+            "  workflow_call:",
+            "    inputs:",
+            "      sharedInput:",
+            "        type: string",
+            "        default: 'call-default'",
+            "      callOnlyInput:",
+            "        type: boolean",
+            "        default: false",
+            "jobs:",
+            "  test:",
+            "    runs-on: ubuntu-latest"
+        )
+
+        $yaml = [Yaml]::new($yamlContent)
+
+        # Provide defaults for both inputs
+        $repoSettings = @{
+            "workflowDefaultInputs" = @(
+                @{ "name" = "sharedInput"; "value" = "new-value" },
+                @{ "name" = "callOnlyInput"; "value" = $true }
+            )
+        }
+
+        # Apply the defaults
+        ApplyWorkflowDefaultInputs -yaml $yaml -repoSettings $repoSettings -workflowName "Test Workflow"
+
+        # Verify workflow_dispatch: sharedInput should be updated
+        $yaml.Get('on:/workflow_dispatch:/inputs:/sharedInput:/default:').content -join '' | Should -Be "default: 'new-value'"
+
+        # Verify workflow_call: Only sharedInput should be updated (exists in workflow_dispatch)
+        $yaml.Get('on:/workflow_call:/inputs:/sharedInput:/default:').content -join '' | Should -Be "default: 'new-value'"
+
+        # Verify workflow_call: callOnlyInput should NOT be updated (doesn't exist in workflow_dispatch)
+        $yaml.Get('on:/workflow_call:/inputs:/callOnlyInput:/default:').content -join '' | Should -Be 'default: false'
+    }
+
+    It 'ApplyWorkflowDefaultInputs handles workflow with only workflow_call inputs' {
+        . (Join-Path $scriptRoot "yamlclass.ps1")
+
+        # Create a workflow that only has workflow_call (no workflow_dispatch)
+        # Per the rule: workflow_call inputs are only updated when matching workflow_dispatch input exists
+        # Since there's no workflow_dispatch, no updates should be applied
+        $yamlContent = @(
+            "name: 'Reusable Workflow'",
+            "on:",
+            "  workflow_call:",
+            "    inputs:",
+            "      input1:",
+            "        type: string",
+            "        default: ''",
+            "      input2:",
+            "        type: boolean",
+            "        default: false",
+            "jobs:",
+            "  test:",
+            "    runs-on: ubuntu-latest"
+        )
+
+        $yaml = [Yaml]::new($yamlContent)
+        $originalContent = $yaml.content -join "`n"
+
+        # Provide defaults
+        $repoSettings = @{
+            "workflowDefaultInputs" = @(
+                @{ "name" = "input1"; "value" = "reusable-value" },
+                @{ "name" = "input2"; "value" = $true }
+            )
+        }
+
+        # Apply the defaults
+        ApplyWorkflowDefaultInputs -yaml $yaml -repoSettings $repoSettings -workflowName "Test Workflow"
+
+        # Verify YAML was not modified
+        $yaml.content -join "`n" | Should -Be $originalContent
+    }
+
+    It 'ApplyWorkflowDefaultInputs handles workflow_call without inputs section' {
+        . (Join-Path $scriptRoot "yamlclass.ps1")
+
+        # Create a workflow with workflow_call that has an inputs section but no actual inputs
+        $yamlContent = @(
+            "name: 'Test Workflow'",
+            "on:",
+            "  workflow_dispatch:",
+            "    inputs:",
+            "      dispatchInput:",
+            "        type: string",
+            "        default: ''",
+            "  workflow_call:",
+            "jobs:",
+            "  test:",
+            "    runs-on: ubuntu-latest"
+        )
+
+        $yaml = [Yaml]::new($yamlContent)
+
+        # Provide defaults
+        $repoSettings = @{
+            "workflowDefaultInputs" = @(
+                @{ "name" = "dispatchInput"; "value" = "test-value" },
+                @{ "name" = "nonExistentInput"; "value" = "ignored" }
+            )
+        }
+
+        # Apply the defaults
+        ApplyWorkflowDefaultInputs -yaml $yaml -repoSettings $repoSettings -workflowName "Test Workflow"
+
+        # Verify workflow_dispatch input was updated
+        $yaml.Get('on:/workflow_dispatch:/inputs:/dispatchInput:/default:').content -join '' | Should -Be "default: 'test-value'"
+
+        # Verify workflow_call remains unchanged (no inputs to update)
+        $yaml.Get('on:/workflow_call:/inputs:').content -join '' | Should -Be ''
+        $yaml.Get('on:/workflow_dispatch:/inputs:/dispatchInput:/default:').content -join '' | Should -Be "default: 'test-value'"
     }
 }
 
