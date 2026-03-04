@@ -1,6 +1,6 @@
 ﻿param(
-    [Parameter(Mandatory = $false, HelpMessage = "The GitHub event name that triggered the workflow. If not specified, the event will be determined from the GITHUB_EVENT_NAME environment variable.")]
-    [string] $eventName = $env:GITHUB_EVENT_NAME,
+    [Parameter(Mandatory = $false, HelpMessage = "The GitHub event name that triggered the workflow.")]
+    [string] $workflowEventName = $env:GITHUB_EVENT_NAME,
     [Parameter(Mandatory = $false, HelpMessage = "Comma-separated value of branch name patterns to include if they exist. If not specified, only the current branch is returned. Wildcards are supported.")]
     [string] $includeBranches
 )
@@ -8,7 +8,7 @@
 $gitHubHelperPath = Join-Path $PSScriptRoot '../Github-Helper.psm1' -Resolve
 Import-Module $gitHubHelperPath -DisableNameChecking
 
-switch ($eventName) {
+switch ($workflowEventName) {
     'schedule' {
       Write-Host "Event is schedule: getting branches from settings"
       $settings = ConvertFrom-Json $env:Settings
@@ -23,7 +23,7 @@ switch ($eventName) {
       }
     }
     { $_ -in 'workflow_dispatch', 'workflow_call' } {
-      Write-Host "Event is $_: getting branches from input"
+      Write-Host "Event is $($_): getting branches from input"
       $branchPatterns = @($includeBranches.Split(',') | ForEach-Object { $_.Trim() })
     }
   }
