@@ -1,5 +1,4 @@
 name: Get Workflow Multi-Run Branches
-description: Gets the branches for a multi-branch workflow run
 author: Microsoft Corporation
 inputs:
   shell:
@@ -7,7 +6,7 @@ inputs:
     required: false
     default: powershell
   workflowEventName:
-    description: The GitHub event name that triggered the workflow
+    description: The GitHub event name that triggered the workflow.
     required: false
     default: ${{ github.event_name }}
   includeBranches:
