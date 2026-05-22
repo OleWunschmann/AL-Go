@@ -1148,12 +1148,16 @@ function GetFilesToUpdate {
 
     $filesToExclude = GetDefaultFilesToExclude -settings $settings
     $filesToExclude += $settings.customALGoFiles.filesToExclude
-    $filesToExclude += $settings.customALGoFiles.filesToRemove
     if ($null -ne $templateSettings) {
         $filesToExclude += $templateSettings.customALGoFiles.filesToExclude
-        $filesToExclude += $templateSettings.customALGoFiles.filesToRemove
     }
     $filesToExclude = @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExclude -projects $projects)
+
+    $filesToRemove = @($settings.customALGoFiles.filesToRemove)
+    if ($null -ne $templateSettings) {
+        $filesToRemove += $templateSettings.customALGoFiles.filesToRemove
+    }
+    $filesToRemove = @(ResolveFilePathsPerProjectInSourceFolder -sourceFolder $baseFolder -destinationFolder $baseFolder -files $filesToRemove -projects $projects)
 
     # Exclude files from filesToExclude that are not in filesToInclude
     $filesToExclude = @($filesToExclude | Where-Object {
@@ -1171,6 +1175,27 @@ function GetFilesToUpdate {
         $include = -not ($filesToExclude | Where-Object { $_.sourceFullPath -eq $fileToInclude.sourceFullPath })
         if(-not $include) {
             OutputDebug "Excluding file $($fileToInclude.sourceFullPath) from include as it is in the exclude list"
+        }
+        return $include
+    })
+
+    # Include files from filesToRemove in filesToExclude (based on destination path)
+    $filesToExclude += @($filesToRemove | Where-Object {
+        $fileToRemove = $_
+        $include = -not ($filesToExclude | Where-Object { $_.destinationFullPath -eq $fileToRemove.destinationFullPath })
+        if($include) {
+            OutputDebug "Including file $($fileToRemove.destinationFullPath) in exclude list as it is marked for removal"
+        }
+        return $include
+     })
+    }
+
+    # Exclude files from filesToInclude that are in filesToRemove (based on destination path)
+    $filesToInclude = @($filesToInclude | Where-Object {
+        $fileToInclude = $_
+        $include = -not ($filesToRemove | Where-Object { $_.destinationFullPath -eq $fileToInclude.destinationFullPath })
+        if(-not $include) {
+            OutputDebug "Excluding file $($fileToInclude.sourceFullPath) from include list as it is marked for removal"
         }
         return $include
     })
@@ -1208,19 +1233,6 @@ function GetFilesToUpdate {
                 OutputDebug "Excluding file $($fileToExclude.destinationFullPath) that exists in the original template but not in the current template"
                 $filesToExclude += $fileToExclude
             }
-        }
-    }
-
-    # Exclude files that should be removed even if they only exist in the base folder and not in the templates
-    $filesToRemove = @($settings.customALGoFiles.filesToRemove)
-    if ($null -ne $templateSettings) {
-        $filesToRemove += $templateSettings.customALGoFiles.filesToRemove
-    }
-    $filesToRemove = @(ResolveFilePathsPerProjectInSourceFolder -sourceFolder $baseFolder -destinationFolder $baseFolder -files $filesToRemove -projects $projects)
-    foreach ($fileToRemove in $filesToRemove) {
-        if (-not ($filesToExclude | Where-Object { $_.destinationFullPath -eq $fileToRemove.destinationFullPath })) {
-            OutputDebug "Excluding file $($fileToRemove.destinationFullPath) that is marked for removal"
-            $filesToExclude += $fileToRemove
         }
     }
 
