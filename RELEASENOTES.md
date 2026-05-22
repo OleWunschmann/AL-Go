@@ -1,3 +1,11 @@
+### Fixed: Custom template file exclusions now propagate to consumer repos
+
+`customALGoFiles.filesToExclude` and `unusedALGoSystemFiles` defined in a custom template's settings are now correctly propagated as file deletions to consumer repos, even when the files no longer exist in the custom template.
+
+### New: `customALGoFiles.filesToRemove` setting
+
+A new `filesToRemove` property is available under `customALGoFiles`. It unconditionally removes matching files from consumer repos during "Update AL-Go System Files", regardless of whether the files exist in the template. This is useful for cleaning up files that have been removed from the template but may still be present in consumer repos. Entries use `sourceFolder` (relative to the consumer repo root), `filter`, and optionally `perProject`.
+
 ### Use artifact manifest to pick .NET runtime for assembly probing
 
 When compiling apps with the workspace compiler, AL-Go now reads the `dotNetVersion` from the BC artifact's `manifest.json` (copied into the compiler folder by BcContainerHelper) and selects an installed .NET runtime whose major version matches. This avoids version drift between the build agent's highest installed runtime and the platform the artifact was built against. If the manifest does not declare a `dotNetVersion`, or no installed runtime matches the required major, versioned .NET assembly probing paths are omitted (a warning is logged in the latter case).

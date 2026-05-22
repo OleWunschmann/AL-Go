@@ -1043,6 +1043,9 @@ function GetFilesToUpdate {
     if ($settings.customALGoFiles.filesToExclude.Count -gt 0) {
         Trace-Information -Message "Usage: Custom AL-Go Files (Exclude)"
     }
+    if ($settings.customALGoFiles.filesToRemove.Count -gt 0) {
+        Trace-Information -Message "Usage: Custom AL-Go Files (Remove)"
+    }
 
     if ($null -ne $templateSettings) {
         if ($templateSettings.customALGoFiles.filesToInclude.Count -gt 0) {
@@ -1050,6 +1053,9 @@ function GetFilesToUpdate {
         }
         if ($templateSettings.customALGoFiles.filesToExclude.Count -gt 0) {
             Trace-Information -Message "Usage: Custom AL-Go Files (Exclude) of template"
+        }
+        if ($templateSettings.customALGoFiles.filesToRemove.Count -gt 0) {
+            Trace-Information -Message "Usage: Custom AL-Go Files (Remove) of template"
         }
     }
 
@@ -1115,6 +1121,23 @@ function GetFilesToUpdate {
                 OutputDebug "Excluding file $($fileToExclude.destinationFullPath) that exists in the original template but not in the current template"
                 $filesToExclude += $fileToExclude
             }
+        }
+    }
+
+    # Add filesToRemove entries: resolved against $baseFolder (not the template) so they are independent of
+    # whether the file still exists in the template. sourceFullPath = destinationFullPath = path in consumer repo.
+    # Placed after the cross-matching filter deliberately — these entries have a sourceFullPath under $baseFolder
+    # which never matches $filesToInclude.sourceFullPath (under $templateFolder), so the filter would drop them.
+    $filesToRemove = @()
+    if ($null -ne $templateSettings) {
+        $filesToRemove += $templateSettings.customALGoFiles.filesToRemove
+    }
+    $filesToRemove += $settings.customALGoFiles.filesToRemove
+    $filesToRemove = @(ResolveFilePaths -sourceFolder $baseFolder -destinationFolder $baseFolder -files $filesToRemove -projects $projects)
+    foreach ($fileToRemove in $filesToRemove) {
+        if (-not ($filesToExclude | Where-Object { $_.destinationFullPath -eq $fileToRemove.destinationFullPath })) {
+            OutputDebug "Excluding file $($fileToRemove.destinationFullPath) that is marked for removal"
+            $filesToExclude += $fileToRemove
         }
     }
 
