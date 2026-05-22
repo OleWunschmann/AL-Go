@@ -1003,9 +1003,13 @@ function GetDefaultFilesToExclude {
     The base folder of the repository. This is the target folder where the files will be updated.
 .PARAMETER templateFolder
     The folder where the template files are located.
+.PARAMETER templateSettings
+    The settings object from the template repository (if any).
 .PARAMETER originalTemplateFolder
     The folder where the original template files are located (if any).
     If originalTemplateFolder is provided, it means that there is a custom template in use and custom template files should be included.
+    Additionally, customALGoFiles.filesToExclude and unusedALGoSystemFiles defined in templateSettings are also resolved against
+    this folder, so that files already removed from the custom template are still propagated as deletions to consumer repos.
 .PARAMETER projects
     The list of projects in the repository.
     The projects are used to resolve per-project files.
@@ -1025,6 +1029,7 @@ function GetFilesToUpdate {
         $baseFolder,
         [Parameter(Mandatory=$true)]
         $templateFolder,
+        $templateSettings = $null,
         $originalTemplateFolder = $null,
         $projects = @()
     )
@@ -1039,11 +1044,26 @@ function GetFilesToUpdate {
         Trace-Information -Message "Usage: Custom AL-Go Files (Exclude)"
     }
 
-    $filesToInclude = GetDefaultFilesToInclude -includeCustomTemplateFiles:$($null -ne $originalTemplateFolder)
+    if ($null -ne $templateSettings) {
+        if ($templateSettings.customALGoFiles.filesToInclude.Count -gt 0) {
+            Trace-Information -Message "Usage: Custom AL-Go Files (Include) of template"
+        }
+        if ($templateSettings.customALGoFiles.filesToExclude.Count -gt 0) {
+            Trace-Information -Message "Usage: Custom AL-Go Files (Exclude) of template"
+        }
+    }
+
+    $filesToInclude = GetDefaultFilesToInclude -includeCustomTemplateFiles:$null -ne $originalTemplateFolder
+    if ($null -ne $templateSettings) {
+        $filesToInclude += $templateSettings.customALGoFiles.filesToInclude
+    }
     $filesToInclude += $settings.customALGoFiles.filesToInclude
     $filesToInclude = @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToInclude -projects $projects)
 
     $filesToExclude = GetDefaultFilesToExclude -settings $settings
+    if ($null -ne $templateSettings) {
+        $filesToExclude += $templateSettings.customALGoFiles.filesToExclude
+    }
     $filesToExclude += $settings.customALGoFiles.filesToExclude
     $filesToExclude = @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExclude -projects $projects)
 
@@ -1068,7 +1088,11 @@ function GetFilesToUpdate {
     })
 
     # Apply unusedALGoSystemFiles logic
-    $unusedALGoSystemFiles = $settings.unusedALGoSystemFiles
+    # Include unusedALGoSystemFiles from the template settings (if any) to also propagate template's deprecated file removals
+    $unusedALGoSystemFiles = @($settings.unusedALGoSystemFiles)
+    if ($null -ne $templateSettings) {
+        $unusedALGoSystemFiles += @($templateSettings.unusedALGoSystemFiles)
+    }
 
     # Exclude unusedALGoSystemFiles from $filesToInclude and add them to $filesToExclude
     $unusedFilesToExclude = $filesToInclude | Where-Object { $unusedALGoSystemFiles -contains (Split-Path -Path $_.sourceFullPath -Leaf) }
@@ -1080,6 +1104,18 @@ function GetFilesToUpdate {
 
         $filesToInclude = @($filesToInclude | Where-Object { $unusedALGoSystemFiles -notcontains (Split-Path -Path $_.sourceFullPath -Leaf) })
         $filesToExclude += @($unusedFilesToExclude)
+    }
+
+    # If there is an original template, we need to check if there are any files to exclude from the original template that do not exist in the template anymore
+    # This is to make sure that if a file was removed from the template, it will also be removed from the target repository
+    if ($null -ne $originalTemplateFolder -and $null -ne $templateSettings) {
+        $null, $originalTemplateFilesToExclude = GetFilesToUpdate -settings $settings -templateSettings $templateSettings -baseFolder $baseFolder -templateFolder $originalTemplateFolder -projects $projects
+        foreach ($fileToExclude in $originalTemplateFilesToExclude) {
+            if (-not ($filesToExclude | Where-Object { $_.destinationFullPath -eq $fileToExclude.destinationFullPath })) {
+                OutputDebug "Excluding file $($fileToExclude.destinationFullPath) that exists in the original template but not in the current template"
+                $filesToExclude += $fileToExclude
+            }
+        }
     }
 
     # List all files to be included and excluded with their source and destination paths, type and original source path (if any)
