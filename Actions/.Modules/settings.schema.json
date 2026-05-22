@@ -775,6 +775,10 @@
                             "filter": {
                                 "type": "string",
                                 "description": "A filter string to select which files to exclude. It can contain '*' and '?' wildcards."
+                            },
+                            "perProject": {
+                                "type": "boolean",
+                                "description": "Indicates whether the exclusion should be applied per project. In that case, sourceFolder is relative to each project folder."
                             }
                         }
                     }
