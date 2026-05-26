@@ -1187,8 +1187,7 @@ function GetFilesToUpdate {
             OutputDebug "Including file $($fileToRemove.destinationFullPath) in exclude list as it is marked for removal"
         }
         return $include
-     })
-    }
+    })
 
     # Exclude files from filesToInclude that are in filesToRemove (based on destination path)
     $filesToInclude = @($filesToInclude | Where-Object {
