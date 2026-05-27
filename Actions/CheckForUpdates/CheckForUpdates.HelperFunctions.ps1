@@ -945,31 +945,36 @@ function ResolveFilePaths {
 
 <#
 .SYNOPSIS
-Resolves file paths per provided project based on the provided source folder, destination folder, and file specifications.
+Resolves file paths for files that already exist in the destination folder (e.g. files to remove).
 
 .DESCRIPTION
-This function is a wrapper around ResolveFilePaths that handles files that are marked as perProject.
-For files that are marked as perProject, it will call ResolveFilePaths for each project with the sourceFolder and destinationFolder modified to include the project name.
-For example, if the sourceFolder is '.AL-Go' and the project is 'ProjectA', it will call ResolveFilePaths with the sourceFolder 'ProjectA/.AL-Go'.
-The same applies to the destinationFolder.
-For files that are not marked as perProject, it will call ResolveFilePaths once with the specified sourceFolder and destinationFolder.
+This function is a wrapper around ResolveFilePaths for resolving file specs that live in the destination
+(target repo) folder rather than in a template folder (source and destination are the same folder).
 
-.PARAMETER sourceFolder
-The base folder where the source files are located.
+Before calling ResolveFilePaths, each file spec is normalized:
+- destinationFolder (if specified) is used as the effective sourceFolder, because in the destination repo
+  the file lives at its destination path, not at the template-relative source path.
+- destinationName (if specified) overrides the filter, because the file may have been renamed at the destination.
+- perProject is cleared to $false on the normalized spec; per-project expansion is handled directly here.
 
-.PARAMETER originalSourceFolder
-The original source folder to check for original files (can be $null). All files of origin 'custom template' are skipped if this parameter is $null.
+For files marked as perProject, the function iterates over all projects and calls ResolveFilePaths once per
+project with a project-scoped folder (destinationFolder/project) as both source and destination.
+For files not marked as perProject, ResolveFilePaths is called once with destinationFolder as both source
+and destination.
 
 .PARAMETER destinationFolder
-The base folder used to construct the destination file paths.
+The folder that serves as both source and destination. Typically the root of the target repository.
 
 .PARAMETER files
 An array of hashtables specifying the files to resolve. Each hashtable can contain the following keys:
-- sourceFolder: The subfolder within the source folder to search for files (default is current folder).
+- sourceFolder: The subfolder within the destination folder to search for files (default is current folder).
+  Note: if destinationFolder is specified, it takes precedence as the effective lookup folder.
 - filter: The file filter to apply when searching for files (default is all files).
-- origin: The origin of the files, either 'template' or 'custom template' (default is 'template').
+  Note: if destinationName is specified, it overrides the filter.
 - type: The type of the files (default is empty).
-- destinationFolder: The subfolder within the destination folder where the files should be placed (default is the same as sourceFolder).
+- destinationFolder: The subfolder within the destination folder where the files are located. Takes
+  precedence over sourceFolder as the effective lookup folder.
+- destinationName: The expected filename in the destination folder. Overrides filter when specified.
 - perProject: A boolean indicating whether the files are per project (default is false).
 
 .PARAMETER projects
@@ -978,15 +983,12 @@ An array of project names used when resolving per-project file paths.
 .OUTPUTS
 An array of hashtables, each containing:
 - sourceFullPath: The full path to the source file.
-- originalSourceFullPath: The full path to the original source file (if found, otherwise $null).
+- originalSourceFullPath: Always $null (no original template folder in this context).
 - type: The type of the file.
 - destinationFullPath: The full path to the destination file.
 #>
-function ResolveFilePathsPerProjectInSourceFolder {
+function ResolveFilePathsInDestinationFolder {
     Param(
-        [Parameter(Mandatory=$true)]
-        [string] $sourceFolder,
-        [string] $originalSourceFolder = $null,
         [Parameter(Mandatory=$true)]
         [string] $destinationFolder,
         [array] $files = @(),
@@ -998,25 +1000,28 @@ function ResolveFilePathsPerProjectInSourceFolder {
 
     $fullFilePaths = @()
     foreach($file in $files) {
-        if ($_.Keys -contains 'perProject' -and $_.perProject -eq $true) {
-            $fullFilePaths += ResolveFilePaths -sourceFolder $sourceFolder -originalSourceFolder $originalSourceFolder -destinationFolder $destinationFolder -files @($file)
-            continue
+        $destinationFile = $file.Clone()
+        $destinationFile.perProject = $false
+
+        # Replace sourceFolder with destinationFolder (if specified) since we are resolving against the destination folder
+        if($file.Keys -contains 'destinationFolder') {
+            $destinationFile.sourceFolder = $file.destinationFolder
+        }
+        # Replace filter with destinationName (if specified) since we are resolving against the destination folder
+        if($file.Keys -contains 'destinationName' -and ($file.destinationName)) {
+            $destinationFile.filter = $file.destinationName
         }
 
-        foreach ($project in $projects) {
-            $projectFile = $file.Clone()
-            $projectFile.perProject = $false
-
-            $projectFile.sourceFolder = $project
-            if($file.Keys -contains 'sourceFolder') {
-                $projectFile.sourceFolder = Join-Path $project $file.sourceFolder
+        if ($file.Keys -contains 'perProject' -and $file.perProject -eq $true) {
+            foreach ($project in $projects) {
+                if ($project -eq '.') {
+                    $project = '' # If project is '.', it means the root folder, so we use an empty string
+                }
+                $projectFolder = Join-Path $destinationFolder $project
+                $fullFilePaths += ResolveFilePaths -sourceFolder $projectFolder -destinationFolder $projectFolder -files @($destinationFile)
             }
-
-            if($file.Keys -contains 'destinationFolder') {
-                $projectFile.destinationFolder = Join-Path $project $file.destinationFolder
-            }
-
-            $fullFilePaths += ResolveFilePaths -sourceFolder $sourceFolder -originalSourceFolder $originalSourceFolder -destinationFolder $destinationFolder -files @($projectFile)
+        } else {
+            $fullFilePaths += ResolveFilePaths -sourceFolder $destinationFolder -destinationFolder $destinationFolder -files @($destinationFile)
         }
     }
 
@@ -1073,31 +1078,44 @@ function GetDefaultFilesToExclude {
 
 <#
 .SYNOPSIS
-    Get the list of files from the template repository to include and exclude based on the provided settings.
+    Compute the lists of files to include, exclude, and remove when synchronizing a repository from its AL-Go template.
 .DESCRIPTION
-    This function gets the list of files to include and exclude based on the provided settings.
-    The unusedALGoSystemFiles setting is also applied to exclude files from the include list and add them to the exclude list.
+    Builds three lists by merging defaults, repository settings, template settings, and the original AL-Go template (if given):
+
+    1. filesToInclude: Files to copy from the template or original template to the destination.
+       Built from default files to include and customALGoFiles.filesToInclude in settings and templateSettings, resolved against the template folder and original template folder (if any).
+    2. filesToExclude: Files to skip from copying; if they already exist in the destination they should be deleted.
+       Built from default files to exclude, customALGoFiles.filesToExclude, and customALGoFiles.filesToRemove in settings and templateSettings, resolved against the template folder and original template folder (if any).
+    3. filesToRemove: Files to unconditionally delete from the destination.
+       Built from customALGoFiles.filesToRemove in settings and templateSettings and resolved against the destination folder (not the template folder).
+
+    The deprecated unusedALGoSystemFiles setting is also applied: matching files are moved from filesToInclude to
+    filesToExclude with a deprecation warning.
 .PARAMETER settings
-    The settings object containing the customALGoFiles configuration.
+    The settings object containing customALGoFiles (filesToInclude, filesToExclude, filesToRemove) and the
+    deprecated unusedALGoSystemFiles configuration.
 .PARAMETER baseFolder
     The base folder of the repository. This is the target folder where the files will be updated.
 .PARAMETER templateFolder
     The folder where the template files are located.
 .PARAMETER templateSettings
-    The settings object from the template repository (if any).
+    The settings object from the template repository (if any). Both customALGoFiles and unusedALGoSystemFiles
+    are merged from this object when it is provided.
 .PARAMETER originalTemplateFolder
-    The folder where the original template files are located (if any).
-    If originalTemplateFolder is provided, it means that there is a custom template in use and custom template files should be included.
-    Additionally, customALGoFiles.filesToExclude and unusedALGoSystemFiles defined in templateSettings are also resolved against
-    this folder, so that files already removed from the custom template are still propagated as deletions to consumer repos.
+    The folder where the original AL-Go template files are located (if any).
+    When provided, it signals that a custom template is in use. Both filesToInclude and filesToExclude specs are
+    resolved against this folder in addition to templateFolder; entries not already covered by originalSourceFullPath
+    tracking are appended to propagate upstream template additions and deletions to consumer repositories.
 .PARAMETER projects
     The list of projects in the repository.
     The projects are used to resolve per-project files.
 .OUTPUTS
-    An array containing two elements: the list of files to include and the list of files to exclude.
-    Files are represented as hashtables with the following keys:
-    - sourceFullPath: The full path to the source file in the template repository.
+    An array containing three elements: the list of files to include, the list of files to exclude, and the list of
+    files to remove.
+    All entries are hashtables with the following keys:
+    - sourceFullPath: The full path to the source file.
     - originalSourceFullPath: The full path to the original source file in the original template repository (if any).
+      Always $null for filesToRemove entries.
     - type: The type of the file (e.g., workflow, settings).
     - destinationFullPath: The full path to the destination file in the target repository.
 #>
@@ -1118,13 +1136,13 @@ function GetFilesToUpdate {
 
     # Send telemetery about customALGoFiles usage
     if ($settings.customALGoFiles.filesToInclude.Count -gt 0) {
-        Trace-Information -Message "Usage: Custom AL-Go Files (Include)"
+        Trace-Information -Message "Usage: Custom AL-Go Files (Include) of repository"
     }
     if ($settings.customALGoFiles.filesToExclude.Count -gt 0) {
-        Trace-Information -Message "Usage: Custom AL-Go Files (Exclude)"
+        Trace-Information -Message "Usage: Custom AL-Go Files (Exclude) of repository"
     }
     if ($settings.customALGoFiles.filesToRemove.Count -gt 0) {
-        Trace-Information -Message "Usage: Custom AL-Go Files (Remove)"
+        Trace-Information -Message "Usage: Custom AL-Go Files (Remove) of repository"
     }
 
     if ($null -ne $templateSettings) {
@@ -1144,12 +1162,20 @@ function GetFilesToUpdate {
     if ($null -ne $templateSettings) {
         $filesToInclude += $templateSettings.customALGoFiles.filesToInclude
     }
+    if ($null -ne $originalTemplateFolder) {
+        $originalTemplateFilesToInclude = @(ResolveFilePaths -sourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToInclude -projects $projects)
+    }
     $filesToInclude = @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToInclude -projects $projects)
 
     $filesToExclude = GetDefaultFilesToExclude -settings $settings
     $filesToExclude += $settings.customALGoFiles.filesToExclude
+    $filesToExclude += $settings.customALGoFiles.filesToRemove
     if ($null -ne $templateSettings) {
         $filesToExclude += $templateSettings.customALGoFiles.filesToExclude
+        $filesToExclude += $templateSettings.customALGoFiles.filesToRemove
+    }
+    if ($null -ne $originalTemplateFolder) {
+        $originalTemplateFilesToExclude = @(ResolveFilePaths -sourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExclude -projects $projects)
     }
     $filesToExclude = @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExclude -projects $projects)
 
@@ -1157,45 +1183,46 @@ function GetFilesToUpdate {
     if ($null -ne $templateSettings) {
         $filesToRemove += $templateSettings.customALGoFiles.filesToRemove
     }
-    $filesToRemove = @(ResolveFilePathsPerProjectInSourceFolder -sourceFolder $baseFolder -destinationFolder $baseFolder -files $filesToRemove -projects $projects)
+    $filesToRemove = @(ResolveFilePathsInDestinationFolder -destinationFolder $baseFolder -files $filesToRemove -projects $projects)
 
-    # Exclude files from filesToExclude that are not in filesToInclude
-    $filesToExclude = @($filesToExclude | Where-Object {
-        $fileToExclude = $_
-        $include = $filesToInclude | Where-Object { $_.sourceFullPath -eq $fileToExclude.sourceFullPath }
-        if(-not $include) {
-            OutputDebug "Excluding file $($fileToExclude.sourceFullPath) from exclude list as it is not in the include list"
-        }
-        return $include
-    })
+    if ($null -ne $originalTemplateFolder) {
+        # Include files from original template filesToInclude that are not already in filesToInclude (based on original source)
+        $filesToInclude += @($originalTemplateFilesToInclude | Where-Object {
+            $fileToInclude = $_
+            $include = -not ($filesToInclude | Where-Object { $_.originalSourceFullPath -eq $fileToInclude.sourceFullPath })
+            if ($include) { OutputDebug "Including file '$($fileToInclude.sourceFullPath)' of original template in include list as it is not in the include list" }
+            return $include
+        })
 
-    # Exclude files from filesToInclude that are in filesToExclude
-    $filesToInclude = @($filesToInclude | Where-Object {
-        $fileToInclude = $_
-        $include = -not ($filesToExclude | Where-Object { $_.sourceFullPath -eq $fileToInclude.sourceFullPath })
-        if(-not $include) {
-            OutputDebug "Excluding file $($fileToInclude.sourceFullPath) from include as it is in the exclude list"
-        }
-        return $include
-    })
+        # Exclude files from original template filesToExclude that are not already in filesToExclude (based on original source)
+        $filesToExclude += @($originalTemplateFilesToExclude | Where-Object {
+            $fileToExclude = $_
+            $exclude = -not ($filesToExclude | Where-Object { $_.originalSourceFullPath -eq $fileToExclude.sourceFullPath })
+            if ($exclude) { OutputDebug "Including file '$($fileToExclude.sourceFullPath)' of original template in exclude list as it is not in the exclude list" }
+            return $exclude
+        })
+    }
 
-    # Include files from filesToRemove in filesToExclude (based on destination path)
-    $filesToExclude += @($filesToRemove | Where-Object {
-        $fileToRemove = $_
-        $include = -not ($filesToExclude | Where-Object { $_.destinationFullPath -eq $fileToRemove.destinationFullPath })
-        if($include) {
-            OutputDebug "Including file $($fileToRemove.destinationFullPath) in exclude list as it is marked for removal"
-        }
-        return $include
-    })
-
-    # Exclude files from filesToInclude that are in filesToRemove (based on destination path)
+    # Exclude files from filesToInclude that are in filesToRemove (based on destination)
     $filesToInclude = @($filesToInclude | Where-Object {
         $fileToInclude = $_
         $include = -not ($filesToRemove | Where-Object { $_.destinationFullPath -eq $fileToInclude.destinationFullPath })
-        if(-not $include) {
-            OutputDebug "Excluding file $($fileToInclude.sourceFullPath) from include list as it is marked for removal"
-        }
+        if (-not $include) { OutputDebug "Excluding destination file '$($fileToInclude.destinationFullPath)' from include list as it is in the remove list" }
+        return $include
+    })
+
+    # Map files from filesToExclude to files that are in filesToInclude (based on source)
+    # Settings for filesToExclude only define the sources (sourceFolder and filter) but not the destinations (destinationFolder, destinationName and perProject)
+    $filesToExclude = @($filesToInclude | Where-Object {
+        $fileToInclude = $_
+        return $filesToExclude | Where-Object { $_.sourceFullPath -eq $fileToInclude.sourceFullPath }
+    })
+
+    # Exclude files from filesToInclude that are in filesToExclude (based on source)
+    $filesToInclude = @($filesToInclude | Where-Object {
+        $file = $_
+        $include = -not ($filesToExclude | Where-Object { $_.sourceFullPath -eq $file.sourceFullPath })
+        if (-not $include) { OutputDebug "Excluding source file '$($file.sourceFullPath)' from include list as it is in the exclude list" }
         return $include
     })
 
@@ -1218,27 +1245,11 @@ function GetFilesToUpdate {
         $filesToExclude += @($unusedFilesToExclude)
     }
 
-    # Include/Exclude files that are in the original template but not in the current template to make sure they are propagated
-    if ($null -ne $originalTemplateFolder -and $null -ne $templateSettings) {
-        $originalTemplateFilesToInclude, $originalTemplateFilesToExclude = GetFilesToUpdate -settings $settings -templateSettings $templateSettings -baseFolder $baseFolder -templateFolder $originalTemplateFolder -projects $projects
-        foreach ($fileToInclude in $originalTemplateFilesToInclude) {
-            if (-not ($filesToInclude | Where-Object { $_.destinationFullPath -eq $fileToInclude.destinationFullPath })) {
-                OutputDebug "Including file $($fileToInclude.destinationFullPath) that exists in the original template but not in the current template"
-                $filesToInclude += $fileToInclude
-            }
-        }
-        foreach ($fileToExclude in $originalTemplateFilesToExclude) {
-            if (-not ($filesToExclude | Where-Object { $_.destinationFullPath -eq $fileToExclude.destinationFullPath })) {
-                OutputDebug "Excluding file $($fileToExclude.destinationFullPath) that exists in the original template but not in the current template"
-                $filesToExclude += $fileToExclude
-            }
-        }
-    }
-
     # List all files to be included and excluded with their source and destination paths, type and original source path (if any)
     $fileFormatter = { param($file) "  -Source: $($file.sourceFullPath), Destination: $($file.destinationFullPath), Type: $($file.type), Original Source: $($file.originalSourceFullPath)"}
     OutputArray -Message "Files to include: $($filesToInclude.Count)" -Array $filesToInclude -Formatter $fileFormatter
     OutputArray -Message "Files to exclude: $($filesToExclude.Count)" -Array $filesToExclude -Formatter $fileFormatter
+    OutputArray -Message "Files to remove: $($filesToRemove.Count)" -Array $filesToRemove -Formatter $fileFormatter
 
-    return @($filesToInclude), @($filesToExclude)
+    return @($filesToInclude), @($filesToExclude), @($filesToRemove)
 }
