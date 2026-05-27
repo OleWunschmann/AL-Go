@@ -1132,6 +1132,7 @@ function GetFilesToUpdate {
         $projects = @()
     )
 
+    $hasOriginalTemplate = $null -ne $originalTemplateFolder
     Write-Host "Getting files to update from template folder '$templateFolder', original template folder '$originalTemplateFolder' and base folder '$baseFolder'"
 
     # Send telemetery about customALGoFiles usage
@@ -1157,12 +1158,12 @@ function GetFilesToUpdate {
         }
     }
 
-    $filesToInclude = GetDefaultFilesToInclude -includeCustomTemplateFiles:$null -ne $originalTemplateFolder
+    $filesToInclude = GetDefaultFilesToInclude -includeCustomTemplateFiles:$hasOriginalTemplate
     $filesToInclude += $settings.customALGoFiles.filesToInclude
     if ($null -ne $templateSettings) {
         $filesToInclude += $templateSettings.customALGoFiles.filesToInclude
     }
-    if ($null -ne $originalTemplateFolder) {
+    if ($hasOriginalTemplate) {
         $originalTemplateFilesToInclude = @(ResolveFilePaths -sourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToInclude -projects $projects)
     }
     $filesToInclude = @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToInclude -projects $projects)
@@ -1174,7 +1175,7 @@ function GetFilesToUpdate {
         $filesToExclude += $templateSettings.customALGoFiles.filesToExclude
         $filesToExclude += $templateSettings.customALGoFiles.filesToRemove
     }
-    if ($null -ne $originalTemplateFolder) {
+    if ($hasOriginalTemplate) {
         $originalTemplateFilesToExclude = @(ResolveFilePaths -sourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExclude -projects $projects)
     }
     $filesToExclude = @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExclude -projects $projects)
@@ -1185,7 +1186,7 @@ function GetFilesToUpdate {
     }
     $filesToRemove = @(ResolveFilePathsInDestinationFolder -destinationFolder $baseFolder -files $filesToRemove -projects $projects)
 
-    if ($null -ne $originalTemplateFolder) {
+    if ($hasOriginalTemplate) {
         # Include files from original template filesToInclude that are not already in filesToInclude (based on original source)
         $filesToInclude += @($originalTemplateFilesToInclude | Where-Object {
             $fileToInclude = $_
