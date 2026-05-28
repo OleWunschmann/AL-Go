@@ -2057,6 +2057,22 @@ Describe "GetFilesToUpdate (general files to update logic)" {
         #     ├── testsub.txt
         #     └── testsub2.txt
 
+        $originalTemplateFolder = Join-Path $PSScriptRoot "originalTemplate"
+        Copy-Item -Path $templateFolder -Destination $originalTemplateFolder -Recurse -Force | Out-Null
+
+        $testOriginalTemplateFile = Join-Path $originalTemplateFolder "testoriginal.txt"
+        Set-Content -Path $testOriginalTemplateFile -Value "test original template txt file"
+
+        # Display the created files structure for oritinal template folder
+        # .
+        # ├── test.ps1
+        # ├── test.txt
+        # ├── test2.txt
+        # ├── testoriginal.txt
+        # └── subfolder
+        #     ├── testsub.txt
+        #     └── testsub2.txt
+
         $baseFolder = Join-Path $PSScriptRoot "baseFolder"
         Copy-Item -Path $templateFolder -Destination $baseFolder -Recurse -Force | Out-Null
 
@@ -2097,6 +2113,9 @@ Describe "GetFilesToUpdate (general files to update logic)" {
     AfterAll {
         if (Test-Path $templateFolder) {
             Remove-Item -Path $templateFolder -Recurse -Force
+        }
+        if (Test-Path $originalTemplateFolder) {
+            Remove-Item -Path $originalTemplateFolder -Recurse -Force
         }
         if (Test-Path $baseFolder) {
             Remove-Item -Path $baseFolder -Recurse -Force
@@ -2680,6 +2699,95 @@ Describe "GetFilesToUpdate (general files to update logic)" {
         $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder
 
         $filesToRemove | Should -BeNullOrEmpty
+    }
+
+    It 'GetFilesToUpdate including original template files missing in template' {
+        $settings = @{
+            type                        = "NotPTE"
+            unusedALGoSystemFiles       = @()
+            customALGoFiles             = @{
+                filesToInclude = @(@{ filter = "testoriginal.txt" })
+                filesToExclude = @()
+                filesToRemove  = @()
+            }
+        }
+
+        $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder -originalTemplateFolder $originalTemplateFolder
+
+        # testoriginal.txt of original template should be in filesToInclude
+        $filesToInclude.SourceFullPath | Should -Contain $testOriginalTemplateFile
+        $filesToInclude.destinationFullPath | Should -Contain ( Join-Path $baseFolder "testoriginal.txt" )
+    }
+
+    It 'GetFilesToUpdate excluding original template files missing in template' {
+        $settings = @{
+            type                        = "PTE"
+            powerPlatformSolutionFolder = "" # empty → GetDefaultFilesToExclude adds PP to exclude specs
+            unusedALGoSystemFiles       = @()
+            customALGoFiles             = @{
+                filesToInclude = @(@{ filter = "testoriginal.txt" })
+                filesToExclude = @(@{ filter = "testoriginal.txt" })
+                filesToRemove  = @()
+            }
+        }
+
+        $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder -originalTemplateFolder $originalTemplateFolder
+
+        # testoriginal.txt of original template should not be in filesToInclude
+        $filesToInclude.SourceFullPath | Should -Not -Contain $testOriginalTemplateFile
+        $filesToInclude.destinationFullPath | Should -Not -Contain ( Join-Path $baseFolder "testoriginal.txt" )
+
+        # testoriginal.txt of original template should be in filesToExclude
+        $filesToExclude.SourceFullPath | Should -Contain $testOriginalTemplateFile
+        $filesToExclude.destinationFullPath | Should -Contain ( Join-Path $baseFolder "testoriginal.txt" )
+    }
+
+    It 'GetFilesToUpdate not including original template files existing in template' {
+        $settings = @{
+            type                        = "NotPTE"
+            unusedALGoSystemFiles       = @()
+            customALGoFiles             = @{
+                filesToInclude = @(@{ filter = "test.txt" })
+                filesToExclude = @()
+                filesToRemove  = @()
+            }
+        }
+
+        $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder -originalTemplateFolder $originalTemplateFolder
+
+        # test.txt of template should be in filesToInclude
+        $filesToInclude.SourceFullPath | Should -Contain $testTxtFile
+        $filesToInclude.destinationFullPath | Should -Contain ( Join-Path $baseFolder "test.txt" )
+
+        # test.txt of original template should not be in filesToInclude
+        $filesToInclude.SourceFullPath | Should -Not -Contain ( Join-Path $originalTemplateFolder "test.txt" )
+    }
+
+    It 'GetFilesToUpdate not excluding original template files existing in template' {
+        $settings = @{
+            type                        = "PTE"
+            powerPlatformSolutionFolder = "" # empty → GetDefaultFilesToExclude adds PP to exclude specs
+            unusedALGoSystemFiles       = @()
+            customALGoFiles             = @{
+                filesToInclude = @(@{ filter = "test.txt" })
+                filesToExclude = @(@{ filter = "test.txt" })
+                filesToRemove  = @()
+            }
+        }
+
+        $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder -originalTemplateFolder $originalTemplateFolder
+
+        # test.txt of both templates should not be in filesToInclude
+        $filesToInclude.SourceFullPath | Should -Not -Contain $testTxtFile
+        $filesToInclude.SourceFullPath | Should -Not -Contain ( Join-Path $originalTemplateFolder "test.txt" )
+        $filesToInclude.destinationFullPath | Should -Not -Contain ( Join-Path $baseFolder "test.txt" )
+
+        # test.txt of template should be in filesToExclude
+        $filesToExclude.SourceFullPath | Should -Contain $testTxtFile
+        $filesToExclude.destinationFullPath | Should -Contain ( Join-Path $baseFolder "test.txt" )
+
+        # test.txt of original template should not be in filesToExclude
+        $filesToExclude.SourceFullPath | Should -Not -Contain ( Join-Path $originalTemplateFolder "test.txt" )
     }
 }
 

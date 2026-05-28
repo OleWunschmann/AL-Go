@@ -1187,21 +1187,16 @@ function GetFilesToUpdate {
     $filesToRemove = @(ResolveFilePathsInDestinationFolder -destinationFolder $baseFolder -files $filesToRemove -projects $projects)
 
     if ($hasOriginalTemplate) {
-        # Include files from original template filesToInclude that are not already in filesToInclude (based on original source)
+        # Include files from original template filesToInclude that are not already in filesToInclude (based on destination)
         $filesToInclude += @($originalTemplateFilesToInclude | Where-Object {
             $fileToInclude = $_
-            $include = -not ($filesToInclude | Where-Object { $_.originalSourceFullPath -eq $fileToInclude.sourceFullPath })
+            $include = -not ($filesToInclude | Where-Object { $_.destinationFullPath -eq $fileToInclude.destinationFullPath })
             if ($include) { OutputDebug "Including file '$($fileToInclude.sourceFullPath)' of original template in include list as it is not in the include list" }
             return $include
         })
 
-        # Exclude files from original template filesToExclude that are not already in filesToExclude (based on original source)
-        $filesToExclude += @($originalTemplateFilesToExclude | Where-Object {
-            $fileToExclude = $_
-            $exclude = -not ($filesToExclude | Where-Object { $_.originalSourceFullPath -eq $fileToExclude.sourceFullPath })
-            if ($exclude) { OutputDebug "Including file '$($fileToExclude.sourceFullPath)' of original template in exclude list as it is not in the exclude list" }
-            return $exclude
-        })
+        # Exclude files from original template filesToExclude in addition to filesToExclude
+        $filesToExclude += $originalTemplateFilesToExclude
     }
 
     # Exclude files from filesToInclude that are in filesToRemove (based on destination)
