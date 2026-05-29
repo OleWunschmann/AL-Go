@@ -1158,46 +1158,48 @@ function GetFilesToUpdate {
         }
     }
 
-    $filesToInclude = GetDefaultFilesToInclude -includeCustomTemplateFiles:$hasOriginalTemplate
-    $filesToInclude += $settings.customALGoFiles.filesToInclude
+    # Determine files to include
+    $filesToIncludeUnresolved = GetDefaultFilesToInclude -includeCustomTemplateFiles:$hasOriginalTemplate
     if ($null -ne $templateSettings) {
-        $filesToInclude += $templateSettings.customALGoFiles.filesToInclude
+        $filesToIncludeUnresolved += $templateSettings.customALGoFiles.filesToInclude
     }
+    $filesToIncludeUnresolved += $settings.customALGoFiles.filesToInclude
+    $filesToInclude = @()
     if ($hasOriginalTemplate) {
-        $originalTemplateFilesToInclude = @(ResolveFilePaths -sourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToInclude -projects $projects)
+        $filesToInclude += @(ResolveFilePaths -sourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToIncludeUnresolved -projects $projects)
     }
-    $filesToInclude = @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToInclude -projects $projects)
+    $filesToInclude += @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToIncludeUnresolved -projects $projects)
+    # Remove duplicates based on destinationFullPath, keeping the last one (setting > template settings > defaults; template folder > original template folder)
+    $filesToInclude = @($filesToInclude | Group-Object -Property destinationFullPath | ForEach-Object { $_.Group[-1] })
 
-    $filesToExclude = GetDefaultFilesToExclude -settings $settings
-    $filesToExclude += $settings.customALGoFiles.filesToExclude
-    $filesToExclude += $settings.customALGoFiles.filesToRemove
+    # Determine files to exclude
+    $filesToExcludeUnresolved = GetDefaultFilesToExclude -settings $settings
     if ($null -ne $templateSettings) {
-        $filesToExclude += $templateSettings.customALGoFiles.filesToExclude
-        $filesToExclude += $templateSettings.customALGoFiles.filesToRemove
+        $filesToExcludeUnresolved += $templateSettings.customALGoFiles.filesToExclude
     }
+    $filesToExcludeUnresolved += $settings.customALGoFiles.filesToExclude
+    $filesToExclude = @()
     if ($hasOriginalTemplate) {
-        $originalTemplateFilesToExclude = @(ResolveFilePaths -sourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExclude -projects $projects)
+        $filesToExclude += @(ResolveFilePaths -sourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExcludeUnresolved -projects $projects)
     }
-    $filesToExclude = @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExclude -projects $projects)
+    $filesToExclude += @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToExcludeUnresolved -projects $projects)
+    # Remove duplicates based on destinationFullPath, keeping the last one (setting > template settings > defaults; template folder > original template folder)
+    $filesToExclude = @($filesToExclude | Group-Object -Property destinationFullPath | ForEach-Object { $_.Group[-1] })
 
-    $filesToRemove = @($settings.customALGoFiles.filesToRemove)
+    # Determine files to remove
+    $filesToRemoveUnresolved = @()
     if ($null -ne $templateSettings) {
-        $filesToRemove += $templateSettings.customALGoFiles.filesToRemove
+        $filesToRemoveUnresolved += $templateSettings.customALGoFiles.filesToRemove
     }
-    $filesToRemove = @(ResolveFilePathsInDestinationFolder -destinationFolder $baseFolder -files $filesToRemove -projects $projects)
-
+    $filesToRemoveUnresolved += $settings.customALGoFiles.filesToRemove
+    $filesToRemove = @()
     if ($hasOriginalTemplate) {
-        # Include files from original template filesToInclude that are not already in filesToInclude (based on destination)
-        $filesToInclude += @($originalTemplateFilesToInclude | Where-Object {
-            $fileToInclude = $_
-            $include = -not ($filesToInclude | Where-Object { $_.destinationFullPath -eq $fileToInclude.destinationFullPath })
-            if ($include) { OutputDebug "Including file '$($fileToInclude.sourceFullPath)' of original template in include list as it is not in the include list" }
-            return $include
-        })
-
-        # Exclude files from original template filesToExclude in addition to filesToExclude
-        $filesToExclude += $originalTemplateFilesToExclude
+        $filesToRemove += @(ResolveFilePaths -sourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToRemoveUnresolved -projects $projects)
     }
+    $filesToRemove += @(ResolveFilePaths -sourceFolder $templateFolder -originalSourceFolder $originalTemplateFolder -destinationFolder $baseFolder -files $filesToRemoveUnresolved -projects $projects)
+    $filesToRemove += @(ResolveFilePathsInDestinationFolder -destinationFolder $baseFolder -files $filesToRemoveUnresolved -projects $projects)
+    # Remove duplicates based on destinationFullPath, keeping the last one (settings > template settings; base folder > template folder > original template folder)
+    $filesToRemove = @($filesToRemove | Group-Object -Property destinationFullPath | ForEach-Object { $_.Group[-1] })
 
     # Exclude files from filesToInclude that are in filesToRemove (based on destination)
     $filesToInclude = @($filesToInclude | Where-Object {

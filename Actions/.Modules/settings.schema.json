@@ -739,6 +739,7 @@
             "type": "object",
             "properties": {
                 "filesToInclude": {
+                    "description": "An array of file specifications to include in the update. Files that match these specifications are copied from the template to the repository. When used in a custom template's settings, inclusions are also propagated to consumer repos even if the files no longer exist in the template.",
                     "type": "array",
                     "items": {
                         "type": "object",
@@ -789,13 +790,13 @@
                                 "type": "string",
                                 "description": "The source folder from which to remove files, relative to the template repository root."
                             },
-                            "destinationFolder": {
-                                "type": "string",
-                                "description": "The destination folder where the files should be removed, relative to the repository root."
-                            },
                             "filter": {
                                 "type": "string",
                                 "description": "A filter string to select which files to remove. It can contain '*' and '?' wildcards."
+                            },
+                            "destinationFolder": {
+                                "type": "string",
+                                "description": "The destination folder where the files should be removed, relative to the repository root."
                             },
                             "perProject": {
                                 "type": "boolean",

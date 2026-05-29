@@ -2555,8 +2555,8 @@ Describe "GetFilesToUpdate (general files to update logic)" {
         # test.txt should be in filesToExclude two times with different destinations
         $testTxtFiles = $filesToExclude | Where-Object { $_.sourceFullPath -eq (Join-Path $templateFolder "test.txt") }
         $testTxtFiles.Count | Should -Be 2
-        $testTxtFiles[0].destinationFullPath | Should -Be (Join-Path $baseFolder 'test.txt')
-        $testTxtFiles[1].destinationFullPath | Should -Be (Join-Path $baseFolder 'test.renamed.txt')
+        $testTxtFiles[0].destinationFullPath | Should -Be (Join-Path $baseFolder 'test.renamed.txt')
+        $testTxtFiles[1].destinationFullPath | Should -Be (Join-Path $baseFolder 'test.txt')
     }
 
     It 'GetFilesToUpdate handles overlapping include patterns with different destinations' {
@@ -2587,7 +2587,7 @@ Describe "GetFilesToUpdate (general files to update logic)" {
             type                  = "NotPTE"
             unusedALGoSystemFiles = @()
             customALGoFiles       = @{
-                filesToInclude = @(@{ filter = "test.txt" })
+                filesToInclude = @()
                 filesToExclude = @()
                 filesToRemove  = @(@{ filter = "test.txt" })
             }
@@ -2595,12 +2595,15 @@ Describe "GetFilesToUpdate (general files to update logic)" {
 
         $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder
 
-        # filesToRemove should have one entry pointing to the base folder file
+        # filesToRemove should one entry resolved from the base folder
         $filesToRemove | Should -Not -BeNullOrEmpty
         $filesToRemove.Count | Should -Be 1
         $filesToRemove[0].sourceFullPath      | Should -Be (Join-Path $baseFolder "test.txt")
         $filesToRemove[0].destinationFullPath | Should -Be (Join-Path $baseFolder "test.txt")
         $filesToRemove[0].originalSourceFullPath | Should -Be $null
+
+        # filesToInclude should be empty
+        $filesToInclude | Should -BeNullOrEmpty
     }
 
     It 'GetFilesToUpdate filesToRemove resolves missing template files from base folder' {
@@ -2624,7 +2627,7 @@ Describe "GetFilesToUpdate (general files to update logic)" {
         $filesToRemove[0].originalSourceFullPath | Should -Be $null
     }
 
-    It 'GetFilesToUpdate filesToRemove resolves missing base folder files as filesToExclude' {
+    It 'GetFilesToUpdate filesToRemove resolves template files not in base folder' {
         $settings = @{
             type                  = "NotPTE"
             unusedALGoSystemFiles = @()
@@ -2637,12 +2640,15 @@ Describe "GetFilesToUpdate (general files to update logic)" {
 
         $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder
 
-        # filesToRemove should have no entries
-        $filesToRemove | Should -BeNullOrEmpty
+        # filesToRemove should have one entry resolved from the template folder
+        $filesToRemove | Should -Not -BeNullOrEmpty
+        $filesToRemove.Count | Should -Be 1
+        $filesToRemove[0].sourceFullPath      | Should -Be (Join-Path $templateFolder "test2.txt")
+        $filesToRemove[0].destinationFullPath | Should -Be (Join-Path $baseFolder "test2.txt")
+        $filesToRemove[0].originalSourceFullPath | Should -Be $null
 
-        # test2.txt should be in filesToExclude
-        $filesToExclude.sourceFullPath | Should -Contain (Join-Path $templateFolder "test2.txt")
-        $filesToExclude.destinationFullPath | Should -Contain (Join-Path $baseFolder "test2.txt")
+        # filesToExclude should be empty
+        $filesToExclude | Should -BeNullOrEmpty
     }
 
     It 'GetFilesToUpdate filesToRemove excludes matching files from filesToInclude' {
@@ -2650,17 +2656,16 @@ Describe "GetFilesToUpdate (general files to update logic)" {
             type                  = "NotPTE"
             unusedALGoSystemFiles = @()
             customALGoFiles       = @{
-                filesToInclude = @(@{ filter = "test.txt" })
+                filesToInclude = @(@{ filter = "test.txt" }, @{ filter = "test2.txt" })
                 filesToExclude = @()
-                filesToRemove  = @(@{ filter = "test.txt" })
+                filesToRemove  = @(@{ filter = "test.txt" }, @{ filter = "test2.txt" })
             }
         }
 
         $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder
 
-        # test.txt should NOT be in filesToInclude
-        $filesToInclude.sourceFullPath | Should -Not -Contain (Join-Path $templateFolder "test.txt")
-        $filesToInclude.destinationFullPath | Should -Not -Contain (Join-Path $baseFolder "test.txt")
+        # filesToInclude should be empty
+        $filesToInclude | Should -BeNullOrEmpty
     }
 
     It 'GetFilesToUpdate filesToRemove excludes matching files from filesToExclude' {
@@ -2676,9 +2681,8 @@ Describe "GetFilesToUpdate (general files to update logic)" {
 
         $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder
 
-        # test.txt should NOT be in filesToExclude
-        $filesToExclude.sourceFullPath | Should -Not -Contain (Join-Path $templateFolder "test.txt")
-        $filesToExclude.destinationFullPath | Should -Not -Contain (Join-Path $baseFolder "test.txt")
+        # filesToExclude should be empty
+        $filesToExclude | Should -BeNullOrEmpty
     }
 
     It 'GetFilesToUpdate filesToRemove keeps not matching files in filesToInclude' {
@@ -2763,7 +2767,7 @@ Describe "GetFilesToUpdate (general files to update logic)" {
             type                  = "NotPTE"
             unusedALGoSystemFiles = @()
             customALGoFiles       = @{
-                filesToInclude = @(@{ filter = "*.txt" })
+                filesToInclude = @()
                 filesToExclude = @()
                 filesToRemove  = @()
             }
@@ -2779,7 +2783,7 @@ Describe "GetFilesToUpdate (general files to update logic)" {
             type                  = "NotPTE"
             unusedALGoSystemFiles = @()
             customALGoFiles       = @{
-                filesToInclude = @(@{ filter = "*.txt" })
+                filesToInclude = @()
                 filesToExclude = @()
                 filesToRemove  = @(@{ filter = "*.unknown" })
             }
