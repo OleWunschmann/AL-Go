@@ -1,10 +1,12 @@
-### Fixed: Custom template file exclusions now propagate to consumer repos
+### Enhanced `customALGoFiles` setting
 
-`customALGoFiles.filesToExclude` and `unusedALGoSystemFiles` defined in a custom template's settings are now correctly propagated as file deletions to consumer repos, even when the files no longer exist in the custom template.
+The `customALGoFiles` setting of a custom template was only applied on the next Update (from `AL-Go-TemplateRepoSettings.doNotEdit.json`). Now the up-to-date settings of the custom template are used directly during "Update AL-Go System Files". The template's `filesToInclude`, `filesToExclude`, and `filesToRemove` settings are merged with the consumer repo's settings before resolution.
 
-### New: `customALGoFiles.filesToRemove` setting
+- **`filesToInclude`** now also resolves files from the original AL-Go template. Files present in the official template that are not overridden by your custom template are propagated to consumer repos. When a file exists in both, the custom template version takes precedence.
+- **`filesToExclude`** now also resolves files from the original AL-Go template (same dual-resolution as `filesToInclude`).
+- **`filesToRemove`** (new property): Unconditionally removes matching files from consumer repos. Files are searched in both the template and end repository. Takes precedence over `filesToInclude`. Entries use `sourceFolder` (relative to the template), `filter`, and optionally `destinationFolder` and `perProject`.
 
-A new `filesToRemove` property is available under `customALGoFiles`. It unconditionally removes matching files from consumer repos during "Update AL-Go System Files", regardless of whether the files exist in the template. This is useful for cleaning up files that have been removed from the template but may still be present in consumer repos. Entries use `sourceFolder` (relative to the consumer repo root), `filter`, and optionally `perProject`.
+Read more at [Customizing AL-Go for GitHub](Scenarios/CustomizingALGoForGitHub.md#Using-custom-template-files).
 
 ### Use artifact manifest to pick .NET runtime for assembly probing
 
