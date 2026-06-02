@@ -173,6 +173,10 @@ on:
     branches:
       - main
 
+defaults:
+  run:
+    shell: powershell
+
 jobs:
   CustomJob:
     runs-on: [ windows-latest ]
@@ -187,8 +191,8 @@ Set-Content -Path $customWorkflowFile -Value $customWorkflowContent
 
 $finalRepoCustomWorkflowContent = $customWorkflowContent
 if($linux) {
-    # Modify workflow to run on ubuntu-latest if the test is running on linux. AL-Go will not modify workflow files based on platform, so we need to do it here to ensure the test works correctly.
-    $finalRepoCustomWorkflowContent = $customWorkflowContent -replace 'windows-latest', 'ubuntu-latest'
+    $finalRepoCustomWorkflowContent = $finalRepoCustomWorkflowContent -replace 'windows-latest', 'ubuntu-latest'
+    $finalRepoCustomWorkflowContent = $finalRepoCustomWorkflowContent -replace 'shell: powershell', 'shell: pwsh'
 }
 
 # Add custom files in the template repository
@@ -460,5 +464,7 @@ Test-LogContainsFromRun -repository $repository -runid $run.id -jobName 'CustomJ
 
 Set-Location $prevLocation
 
+Refresh-Token -repository $repository
 RemoveRepository -repository $repository -path $finalRepoPath
+Refresh-Token -repository $templateRepository
 RemoveRepository -repository $templateRepository -path $templateRepoPath
