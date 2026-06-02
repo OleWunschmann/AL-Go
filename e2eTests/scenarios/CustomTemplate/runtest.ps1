@@ -449,12 +449,12 @@ Get-ContentLF -Path (Join-Path (Get-Location) $optionalCustomFileName) | Should 
 $run = RunCICD -repository $repository -branch $branch -wait
 
 # Check Custom Jobs
-Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-TemplateInit' -stepName 'Init' -expectedText 'CustomJob-TemplateInit was here!'
-Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-TemplateDeploy' -stepName 'Deploy' -expectedText 'CustomJob-TemplateDeploy was here!'
-Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-PreDeploy' -stepName 'PreDeploy' -expectedText 'CustomJob-PreDeploy was here!'
-Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-PostDeploy' -stepName 'PostDeploy' -expectedText 'CustomJob-PostDeploy was here!'
-{ Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'JustSomeJob' -stepName 'JustSomeStep' -expectedText 'JustSomeJob was here!' } | Should -Throw
-{ Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'JustSomeTemplateJob' -stepName 'JustSomeTemplateStep' -expectedText 'JustSomeTemplateJob was here!' } | Should -Throw
+Test-LogContainsFromRun -repository $repository -runid $run.id -jobName 'CustomJob-TemplateInit' -stepName 'Init' -expectedText 'CustomJob-TemplateInit was here!'
+Test-LogContainsFromRun -repository $repository -runid $run.id -jobName 'CustomJob-TemplateDeploy' -stepName 'Deploy' -expectedText 'CustomJob-TemplateDeploy was here!'
+Test-LogContainsFromRun -repository $repository -runid $run.id -jobName 'CustomJob-PreDeploy' -stepName 'PreDeploy' -expectedText 'CustomJob-PreDeploy was here!'
+Test-LogContainsFromRun -repository $repository -runid $run.id -jobName 'CustomJob-PostDeploy' -stepName 'PostDeploy' -expectedText 'CustomJob-PostDeploy was here!'
+{ Test-LogContainsFromRun -repository $repository -runid $run.id -jobName 'JustSomeJob' -stepName 'JustSomeStep' -expectedText 'JustSomeJob was here!' } | Should -Throw
+{ Test-LogContainsFromRun -repository $repository -runid $run.id -jobName 'JustSomeTemplateJob' -stepName 'JustSomeTemplateStep' -expectedText 'JustSomeTemplateJob was here!' } | Should -Throw
 
 #endregion
 
