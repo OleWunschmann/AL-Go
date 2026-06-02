@@ -2092,7 +2092,7 @@ Describe "GetFilesToUpdate (general files to update logic)" {
         $baseProject2Folder = Join-Path $baseFolder "project2"
         Copy-Item -Path $templateFolder -Destination $baseProject2Folder -Recurse -Force | Out-Null
 
-        Remove-Item -Path $baseFolder -Filter 'test2.txt' -Recurse -Force | Out-Null
+        Remove-Item -Path (Join-Path $baseFolder 'test2.txt') -Recurse -Force | Out-Null
 
         # Display the created files structure for base folder
         # .
