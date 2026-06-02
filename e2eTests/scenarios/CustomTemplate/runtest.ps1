@@ -70,6 +70,9 @@ CreateAlGoRepository `
     -branch $branch
 $templateRepoPath = (Get-Location).Path
 
+# Stop all currently running workflows on template repository
+CancelAllWorkflows -repository $templateRepository
+
 Set-Location $prevLocation
 
 $appName = 'MyApp'
@@ -88,8 +91,14 @@ CreateAlGoRepository `
     }
 $finalRepoPath = (Get-Location).Path
 
+# Stop all currently running workflows on final repository
+CancelAllWorkflows -repository $repository
+
 # Update AL-Go System Files to use template repository
 RunUpdateAlGoSystemFiles -directCommit -wait -templateUrl $templateRepository -ghTokenWorkflow $algoauthapp -repository $repository -branch $branch | Out-Null
+
+# Stop all currently running workflows on final repository
+CancelAllWorkflows -repository $repository
 
 #endregion
 
@@ -176,9 +185,10 @@ jobs:
 "@
 Set-Content -Path $customWorkflowFile -Value $customWorkflowContent
 
+$finalRepoCustomWorkflowContent = $customWorkflowContent
 if($linux) {
     # Modify workflow to run on ubuntu-latest if the test is running on linux. AL-Go will not modify workflow files based on platform, so we need to do it here to ensure the test works correctly.
-    $customWorkflowContent = $customWorkflowContent -replace 'windows-latest', 'ubuntu-latest'
+    $finalRepoCustomWorkflowContent = $customWorkflowContent -replace 'windows-latest', 'ubuntu-latest'
 }
 
 # Add custom files in the template repository
@@ -224,7 +234,7 @@ CommitAndPush -commitMessage 'Add template customizations [skip ci]'
 # Update AL-Go System Files for template repository to update customizations from template repository
 RunUpdateAlGoSystemFiles -directCommit -wait -templateUrl $template -ghTokenWorkflow $algoauthapp -repository $templateRepository -branch $branch | Out-Null
 
-# Do not run workflows on template repository
+# Stop all currently running workflows on template repository
 CancelAllWorkflows -repository $templateRepository
 
 # Pull changes
@@ -262,9 +272,9 @@ CommitAndPush -commitMessage 'Restore template customizations [skip ci]'
 $run = RunCICD -repository $templateRepository -branch $branch -wait
 
 # Check Custom Jobs
-Test-LogContainsFromRun -runid $run.id -jobName 'CustomJob-TemplateInit' -stepName 'Init' -expectedText 'CustomJob-TemplateInit was here!'
-Test-LogContainsFromRun -runid $run.id -jobName 'CustomJob-TemplateDeploy' -stepName 'Deploy' -expectedText 'CustomJob-TemplateDeploy was here!'
-{ Test-LogContainsFromRun -runid $run.id -jobName 'JustSomeTemplateJob' -stepName 'JustSomeTemplateStep' -expectedText 'JustSomeTemplateJob was here!' } | Should -Throw
+Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-TemplateInit' -stepName 'Init' -expectedText 'CustomJob-TemplateInit was here!'
+Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-TemplateDeploy' -stepName 'Deploy' -expectedText 'CustomJob-TemplateDeploy was here!'
+{ Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'JustSomeTemplateJob' -stepName 'JustSomeTemplateStep' -expectedText 'JustSomeTemplateJob was here!' } | Should -Throw
 
 #endregion
 
@@ -364,7 +374,7 @@ CommitAndPush -commitMessage 'Add final repo customizations [skip ci]'
 # Update AL-Go System Files for the final repository to uptake customizations from template repository
 RunUpdateAlGoSystemFiles -directCommit -wait -templateUrl $templateRepository -ghTokenWorkflow $algoauthapp -repository $repository -branch $branch | Out-Null
 
-# Stop all currently running workflows and run a new CI/CD workflow
+# Stop all currently running workflows on final repository
 CancelAllWorkflows -repository $repository
 
 # Pull changes
@@ -375,7 +385,7 @@ Pull
 
 # Check that custom workflow file is present
 (Join-Path (Get-Location) $customWorkflowfileRelativePath) | Should -Exist
-Get-ContentLF -Path (Join-Path (Get-Location) $customWorkflowfileRelativePath) | Should -Be $customWorkflowContent.Replace("`r", "").TrimEnd("`n")
+Get-ContentLF -Path (Join-Path (Get-Location) $customWorkflowfileRelativePath) | Should -Be $finalRepoCustomWorkflowContent.Replace("`r", "").TrimEnd("`n")
 
 # Check that default custom file is present (in template's filesToInclude)
 (Join-Path (Get-Location) $defaultCustomFileName) | Should -Exist
@@ -408,8 +418,15 @@ CommitAndPush -commitMessage 'Add custom files to be updated when updating AL-Go
 # Update AL-Go System Files for final repository to uptake customizations from final repository
 RunUpdateAlGoSystemFiles -directCommit -wait -templateUrl $templateRepository -ghTokenWorkflow $algoauthapp -repository $repository -branch $branch | Out-Null
 
+# Stop all currently running workflows on final repository
+CancelAllWorkflows -repository $repository
+
 # Pull changes
 Pull
+
+# Check that custom workflow file is present
+(Join-Path (Get-Location) $customWorkflowfileRelativePath) | Should -Exist
+Get-ContentLF -Path (Join-Path (Get-Location) $customWorkflowfileRelativePath) | Should -Be $finalRepoCustomWorkflowContent.Replace("`r", "").TrimEnd("`n")
 
 # Check that default custom file is NOT present (in repos's filesToExclude and template's filesToInclude)
 (Join-Path (Get-Location) $defaultCustomFileName) | Should -Not -Exist
@@ -432,12 +449,12 @@ Get-ContentLF -Path (Join-Path (Get-Location) $optionalCustomFileName) | Should 
 $run = RunCICD -repository $repository -branch $branch -wait
 
 # Check Custom Jobs
-Test-LogContainsFromRun -runid $run.id -jobName 'CustomJob-TemplateInit' -stepName 'Init' -expectedText 'CustomJob-TemplateInit was here!'
-Test-LogContainsFromRun -runid $run.id -jobName 'CustomJob-TemplateDeploy' -stepName 'Deploy' -expectedText 'CustomJob-TemplateDeploy was here!'
-Test-LogContainsFromRun -runid $run.id -jobName 'CustomJob-PreDeploy' -stepName 'PreDeploy' -expectedText 'CustomJob-PreDeploy was here!'
-Test-LogContainsFromRun -runid $run.id -jobName 'CustomJob-PostDeploy' -stepName 'PostDeploy' -expectedText 'CustomJob-PostDeploy was here!'
-{ Test-LogContainsFromRun -runid $run.id -jobName 'JustSomeJob' -stepName 'JustSomeStep' -expectedText 'JustSomeJob was here!' } | Should -Throw
-{ Test-LogContainsFromRun -runid $run.id -jobName 'JustSomeTemplateJob' -stepName 'JustSomeTemplateStep' -expectedText 'JustSomeTemplateJob was here!' } | Should -Throw
+Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-TemplateInit' -stepName 'Init' -expectedText 'CustomJob-TemplateInit was here!'
+Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-TemplateDeploy' -stepName 'Deploy' -expectedText 'CustomJob-TemplateDeploy was here!'
+Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-PreDeploy' -stepName 'PreDeploy' -expectedText 'CustomJob-PreDeploy was here!'
+Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'CustomJob-PostDeploy' -stepName 'PostDeploy' -expectedText 'CustomJob-PostDeploy was here!'
+{ Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'JustSomeJob' -stepName 'JustSomeStep' -expectedText 'JustSomeJob was here!' } | Should -Throw
+{ Test-LogContainsFromRun -repository $templateRepository -runid $run.id -jobName 'JustSomeTemplateJob' -stepName 'JustSomeTemplateStep' -expectedText 'JustSomeTemplateJob was here!' } | Should -Throw
 
 #endregion
 

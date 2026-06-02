@@ -2550,7 +2550,7 @@ Describe "GetFilesToUpdate (general files to update logic)" {
         $filesToInclude, $filesToExclude, $filesToRemove = GetFilesToUpdate -settings $settings -baseFolder $baseFolder -templateFolder $templateFolder
 
         # test.txt should not be in filesToInclude
-        $filesToInclude.sourceFullPath | Should -Not -Contain (Join-Path $templateFolder "test.txt")
+        $filesToInclude | Should -BeNullOrEmpty
 
         # test.txt should be in filesToExclude two times with different destinations
         $testTxtFiles = $filesToExclude | Where-Object { $_.sourceFullPath -eq (Join-Path $templateFolder "test.txt") }
