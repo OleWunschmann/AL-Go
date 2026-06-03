@@ -739,7 +739,7 @@
             "type": "object",
             "properties": {
                 "filesToInclude": {
-                    "description": "An array of file specifications to include in the update. Files that match these specifications are copied from the template to the repository. When used in a custom template's settings, inclusions are also propagated to consumer repos even if the files no longer exist in the template.",
+                    "description": "An array of file specifications to include in the update. Files that match these specifications are copied from the template to the repository. When used in a custom template's settings, inclusions are also propagated from the original template to consumer repos even if the files no longer exist in the custom template.",
                     "type": "array",
                     "items": {
                         "type": "object",
@@ -764,7 +764,7 @@
                     }
                 },
                 "filesToExclude": {
-                    "description": "An array of file specifications to exclude from the update. Files that match these specifications are not copied from the template to the repository. When used in a custom template's settings, exclusions are also propagated to consumer repos even if the files no longer exist in the template.",
+                    "description": "An array of file specifications to exclude from the update. Files that match these specifications are not copied from the template to the repository. When used in a custom template's settings, exclusions are also propagated from the original template to consumer repos even if the files no longer exist in the custom template.",
                     "type": "array",
                     "items": {
                         "type": "object",
