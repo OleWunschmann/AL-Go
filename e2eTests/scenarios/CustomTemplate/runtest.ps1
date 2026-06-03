@@ -85,6 +85,7 @@ CreateAlGoRepository `
     -template $template `
     -repository $repository `
     -branch $branch `
+    -addRepoSettings @{ "useCompilerFolder" = $true; "doNotPublishApps" = $true } `
     -contentScript {
         Param([string] $path)
         $null = CreateNewAppInFolder -folder $path -name $appName -publisher $publisherName
@@ -464,7 +465,7 @@ Test-LogContainsFromRun -repository $repository -runid $run.id -jobName 'CustomJ
 
 Set-Location $prevLocation
 
-Refresh-Token -repository $repository
+RefreshToken -repository $repository
 RemoveRepository -repository $repository -path $finalRepoPath
-Refresh-Token -repository $templateRepository
+RefreshToken -repository $templateRepository
 RemoveRepository -repository $templateRepository -path $templateRepoPath
